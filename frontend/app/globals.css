@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; }
+
+html { background: #020617; }
+
+body { margin: 0; font-family: Arial, Helvetica, sans-serif; }
+
+.hero-glow { position: absolute; inset: -12rem 20% auto; height: 26rem; background: radial-gradient(ellipse, rgb(34 211 238 / 18%), transparent 67%); filter: blur(15px); pointer-events: none; }

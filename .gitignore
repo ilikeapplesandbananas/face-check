@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Local tooling
+.DS_Store
+*.log
+.pytest_cache/
+backend/pytest-cache-files-*/
+
+# Inference model artifacts are downloaded separately and must not be versioned.
+backend/models/*.onnx

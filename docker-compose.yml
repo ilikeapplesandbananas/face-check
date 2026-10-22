@@ -1,0 +1,76 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-veriface}
+      POSTGRES_USER: ${POSTGRES_USER:-veriface}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-veriface-development-only}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:v1.16.2
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./backend
+    environment:
+      VERIFACE_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-veriface}:${POSTGRES_PASSWORD:-veriface-development-only}@postgres:5432/${POSTGRES_DB:-veriface}
+      VERIFACE_QDRANT_URL: http://qdrant:6333
+      VERIFACE_QDRANT_COLLECTION: ${VERIFACE_QDRANT_COLLECTION:-face_embeddings}
+      VERIFACE_RETINAFACE_MODEL_PATH: /app/models/retinaface_r50_v1.onnx
+      VERIFACE_ARCFACE_MODEL_PATH: /app/models/arcface_r100_v1.onnx
+      VERIFACE_ONNX_PROVIDERS: ${VERIFACE_ONNX_PROVIDERS:-CPUExecutionProvider}
+      VERIFACE_BLUR_THRESHOLD: ${VERIFACE_BLUR_THRESHOLD:-100.0}
+      VERIFACE_MIN_FACE_SIZE: ${VERIFACE_MIN_FACE_SIZE:-112}
+      VERIFACE_MAX_UPLOAD_BYTES: ${VERIFACE_MAX_UPLOAD_BYTES:-10485760}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./backend/models:/app/models:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:${BACKEND_PORT:-8000}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  qdrant_data:

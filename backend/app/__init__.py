@@ -1,0 +1,1 @@
+"""VeriFace FastAPI application package."""
