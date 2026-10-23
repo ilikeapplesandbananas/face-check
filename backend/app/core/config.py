@@ -1,4 +1,4 @@
-from functools import lru_cache
+﻿from functools import lru_cache
 from pathlib import Path
 
 from pydantic import Field
@@ -17,14 +17,17 @@ class Settings(BaseSettings):
     retinaface_model_path: Path = Field(default=Path("models/retinaface_r50_v1.onnx"))
     arcface_model_path: Path = Field(default=Path("models/arcface_r100_v1.onnx"))
     onnx_providers: str = Field(default="CPUExecutionProvider")
-    blur_threshold: float = Field(default=100.0, gt=0)
-    min_face_size: int = Field(default=112, ge=112)
+    blur_threshold: float = Field(default=20.0, gt=0)
+    min_face_size: int = Field(default=64, ge=40)
     database_url: str = Field(
         default="postgresql+psycopg://veriface:veriface-development-only@localhost:5432/veriface"
     )
+    sqlite_url: str = Field(default="sqlite:///data/veriface.db")
     qdrant_url: str = Field(default="http://localhost:6333")
+    qdrant_storage_path: Path = Field(default=Path("data/qdrant_storage"))
     qdrant_collection: str = Field(default="face_embeddings", min_length=1)
-    max_upload_bytes: int = Field(default=10 * 1024 * 1024, ge=1)
+    max_upload_bytes: int = Field(default=15 * 1024 * 1024, ge=1)
+    serpapi_api_key: str | None = Field(default=None)
 
     @property
     def provider_list(self) -> list[str]:

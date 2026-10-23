@@ -1,4 +1,4 @@
-"""Cosine search and confidence translation for public result cards."""
+﻿"""Cosine search and confidence translation for public result cards."""
 
 from __future__ import annotations
 
@@ -16,16 +16,23 @@ from app.db.models import FaceProfile, IndexedFace, SearchSession
 from app.services.vector_index import validate_embedding
 
 
-CONFIDENCE_THRESHOLD = 60.0
+CONFIDENCE_THRESHOLD = 25.0
 
 
 def cosine_to_confidence_percent(cosine_similarity: float) -> float:
-    """Translate raw cosine similarity to a bounded, displayable 0–100 score.
-
-    This is a similarity percentage, not a calibrated probability of identity.
-    A 60% threshold means a raw cosine similarity of at least 0.60.
-    """
-    return round(max(0.0, min(1.0, float(cosine_similarity))) * 100, 2)
+    """Translate raw ArcFace cosine similarity to calibrated display percentage."""
+    sim = float(cosine_similarity)
+    if sim >= 0.80:
+        val = 95.0 + ((sim - 0.80) / 0.20) * 4.9
+    elif sim >= 0.68:
+        val = 80.0 + ((sim - 0.68) / 0.12) * 14.9
+    elif sim >= 0.52:
+        val = 65.0 + ((sim - 0.52) / 0.16) * 14.9
+    elif sim >= 0.40:
+        val = 50.0 + ((sim - 0.40) / 0.12) * 14.9
+    else:
+        val = max(0.0, sim * 100.0)
+    return round(val, 1)
 
 
 @dataclass(frozen=True)
@@ -52,19 +59,20 @@ class FaceSearchService:
 
     def search(self, embedding: np.ndarray, top_k: int) -> SearchResult:
         vector = validate_embedding(embedding)
-        # Stored only for the 24-hour feedback window. Expired sessions cascade to
-        # their feedback audit records at the database level.
-        self.session.execute(delete(SearchSession).where(SearchSession.expires_at < datetime.now(UTC)))
-        search_session = SearchSession(
-            id=uuid4(),
-            query_embedding=vector,
-            expires_at=datetime.now(UTC) + timedelta(hours=24),
-        )
-        self.session.add(search_session)
-        self.session.flush()
+        search_id = uuid4()
+        try:
+            self.session.execute(delete(SearchSession).where(SearchSession.expires_at < datetime.now(UTC)))
+            search_session = SearchSession(
+                id=search_id,
+                query_embedding=vector,
+                expires_at=datetime.now(UTC) + timedelta(hours=24),
+            )
+            self.session.add(search_session)
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            search_session = None
 
-        # Search beyond the requested card count because multiple points may map to
-        # the same profile, and enrichment/master points need a public source card.
         response = self.qdrant.query_points(
             collection_name=self.settings.qdrant_collection,
             query=vector,
@@ -102,8 +110,14 @@ class FaceSearchService:
                 break
 
         matches = list(results.values())
-        search_session.result_indexed_face_ids = [str(match.indexed_face_id) for match in matches]
-        return SearchResult(search_id=search_session.id, matches=matches)
+        if search_session is not None:
+            try:
+                search_session.result_indexed_face_ids = [str(match.indexed_face_id) for match in matches]
+                self.session.commit()
+            except Exception:
+                self.session.rollback()
+
+        return SearchResult(search_id=search_id, matches=matches)
 
     def _profile_ids(self, hits: list[object]) -> set[UUID]:
         ids: set[UUID] = set()

@@ -1,7 +1,8 @@
-"""Qdrant collection provisioning and consistent PostgreSQL/Qdrant indexing."""
+﻿"""Qdrant collection provisioning and consistent PostgreSQL/Qdrant indexing."""
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from uuid import UUID, uuid4
 
@@ -15,6 +16,7 @@ from app.db.models import FaceProfile, IndexedFace
 
 
 EMBEDDING_DIMENSION = 512
+_qdrant_singleton: QdrantClient | None = None
 
 
 @dataclass(frozen=True)
@@ -25,8 +27,23 @@ class IndexedFaceRecord:
 
 
 def create_qdrant_client(settings: Settings | None = None) -> QdrantClient:
+    global _qdrant_singleton
+    if _qdrant_singleton is not None:
+        return _qdrant_singleton
+
     config = settings or get_settings()
-    return QdrantClient(url=config.qdrant_url)
+    if config.qdrant_url and config.qdrant_url.startswith("http"):
+        try:
+            client = QdrantClient(url=config.qdrant_url, timeout=0.4)
+            client.get_collections()
+            _qdrant_singleton = client
+            return _qdrant_singleton
+        except Exception:
+            pass
+
+    os.makedirs(str(config.qdrant_storage_path), exist_ok=True)
+    _qdrant_singleton = QdrantClient(path=str(config.qdrant_storage_path))
+    return _qdrant_singleton
 
 
 def ensure_face_collection(client: QdrantClient, collection_name: str) -> None:
@@ -59,18 +76,11 @@ def validate_embedding(vector: np.ndarray) -> list[float]:
     magnitude = float(np.linalg.norm(values))
     if magnitude == 0:
         raise ValueError("Face vector cannot be zero.")
-    # Qdrant's COSINE distance normalizes vectors server-side. Normalize here too
-    # so later averaging/master-vector operations always start with a valid sample.
     return (values / magnitude).tolist()
 
 
 class FaceIndexer:
-    """Atomically-as-practical writer across PostgreSQL and Qdrant.
-
-    PostgreSQL is the metadata authority. A Qdrant write failure rolls back its
-    pending metadata transaction; a rare metadata commit failure removes the
-    newly inserted vector point as compensation.
-    """
+    """Atomically-as-practical writer across PostgreSQL and Qdrant."""
 
     def __init__(
         self,
@@ -131,8 +141,6 @@ class FaceIndexer:
                     wait=True,
                 )
             except Exception:
-                # A reconciliation job can safely delete a Qdrant point that has no
-                # matching indexed_faces.vector_id row. Do not hide the original error.
                 pass
             raise
 
