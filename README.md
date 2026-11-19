@@ -1,5 +1,9 @@
 # VeriFace AI 🔍
 
+**Live Web UI (GitHub Pages):** [https://ilikeapplesandbananas.github.io/face-check/](https://ilikeapplesandbananas.github.io/face-check/)
+
+> **Note:** GitHub Pages hosts the static Next.js frontend. To run live face detection and vector search, run the FastAPI backend locally (`http://localhost:8000`) or point `NEXT_PUBLIC_API_BASE_URL` to a hosted backend instance.
+
 **VeriFace AI** is a reverse facial recognition and web-discovery engine inspired by platforms like **FaceCheck.ID**, **PimEyes**, and **Lenso.ai**. 
 
 Unlike conventional visual search engines that match clothing, background objects, or scene lighting, VeriFace isolates and extracts human facial biometric geometry. It uses deep metric learning to detect, align, and match faces across the open web and private vector archives using 512-dimensional unit hypersphere embeddings.
